@@ -6,8 +6,8 @@ package grails.plugin.databasesession
 class PersistentSession {
 
 	String id
-	Long creationTime
-	Long lastAccessedTime
+	Long creationTime = System.currentTimeMillis()
+	Long lastAccessedTime = System.currentTimeMillis()
 	Boolean invalidated = false
 	Integer maxInactiveInterval = 30
 

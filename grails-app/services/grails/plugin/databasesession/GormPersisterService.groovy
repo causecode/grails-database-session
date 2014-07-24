@@ -1,7 +1,5 @@
 package grails.plugin.databasesession
 
-import javax.annotation.PostConstruct;
-
 import grails.util.GrailsUtil
 import grails.validation.ValidationException
 
@@ -15,20 +13,30 @@ class GormPersisterService implements Persister {
 
 	static transactional = false
 
-	def db
 	def grailsApplication
-	def mongo
 	def persistentSessionService
 
 	void create(String sessionId) {
+		def maxInactiveInterval = grailsApplication.config.webxml.sessionConfig.sessionTimeout
+		if (!(maxInactiveInterval instanceof Number)) {
+			maxInactiveInterval = 30
+		}
+
 		try {
 			if (PersistentSession.exists(sessionId)) {
 				return
 			}
 			Long creationTime = System.currentTimeMillis()
 
-			db.persistentSession.insert([_id: sessionId, creationTime: creationTime,
-				lastAccessedTime: creationTime, maxInactiveInterval: 30, invalidated: false])
+			Map data = [creationTime: creationTime, _id: sessionId, lastAccessedTime: creationTime,
+				maxInactiveInterval: maxInactiveInterval, invalidated: false]
+
+			// Using mongo property to dynamic insert. Will fail if mongo not installed & will be handled by next catch block
+			PersistentSession.collection.insert(data)
+		} catch (MissingMethodException e) {
+			// collection property in only available in mongodb but not in case of hibernate
+			PersistentSession sessionInstance = new PersistentSession([maxInactiveInterval: maxInactiveInterval])
+			sessionInstance.save(flush: true, failOnError: true)
 		} catch (e) {
 			handleException e
 		}
@@ -62,13 +70,6 @@ class GormPersisterService implements Persister {
 		catch (e) {
 			handleException e
 		}
-	}
-
-	@PostConstruct
-	void postConstruct() {
-		String databaseName = grailsApplication.config.grails.mongo.databaseName
-
-		db = mongo.getDB(databaseName)
 	}
 
 	void setAttribute(String sessionId, String name, value) throws InvalidatedSessionException {

@@ -11,9 +11,8 @@ import org.springframework.util.Assert
 class PersistentSessionService {
     
     static transactional = false
+
     def grailsApplication
-    def db
-    def mongo
 
 	def deserializeAttributeValue(byte[] serialized) {
 		if (!serialized) {
@@ -57,18 +56,6 @@ class PersistentSessionService {
 		Assert.hasLength sessionId
 
 		findValuesBySession(sessionId)*.delete()
-	}
-
-    @Deprecated
-	void deleteValuesBySessionIds(sessionIds) {
-		deleteAttributesBySessionIds(sessionIds)
-	}
-
-    @Deprecated
-	void removeValue(String sessionId, String name) {
-		Assert.hasLength sessionId
-		Assert.hasLength name
-        PersistentSessionAttribute.findAllBySessionIdAndName(sessionId, name)*.delete()
 	}
 
 	protected void deleteValuesByIds(ids) {
@@ -117,11 +104,4 @@ class PersistentSessionService {
             eq("id", sessionId)
         }
 	}
-
-    @PostConstruct
-    void postConstruct() {
-        String databaseName = grailsApplication.config.grails.mongo.databaseName
-
-        db = mongo.getDB(databaseName)
-    }
 }
