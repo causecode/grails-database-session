@@ -204,11 +204,4 @@ class GormPersisterService implements Persister {
 			throw new InvalidatedSessionException()
 		}
 	}
-
-	protected void checkInvalidated(String sessionId) {
-		Boolean invalidated = persistentSessionService.isSessionInvalidated(sessionId)
-		if (invalidated == null || invalidated) {
-			throw new InvalidatedSessionException()
-		}
-	}
 }

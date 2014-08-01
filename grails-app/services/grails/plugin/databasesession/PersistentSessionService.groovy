@@ -75,7 +75,8 @@ class PersistentSessionService {
 		if (useMongo) {
 			PersistentSessionAttribute.collection.remove([sessionId: [$in: sessionIds]])
 		} else {
-			PersistentSessionAttribute.executeUpdate("DELETE PersistentSessionAttribute a WHERE a.sessionId IN ?", [sessionIds])
+			PersistentSessionAttribute.executeUpdate("DELETE PersistentSessionAttribute a WHERE a.sessionId IN :sessionIds",
+				[sessionIds: sessionIds])
 		}
 	}
 
@@ -108,7 +109,7 @@ class PersistentSessionService {
 		if (useMongo) {
 			PersistentSession.collection.remove([_id: [$in: ids]])
 		} else {
-			PersistentSession.executeUpdate("DELETE PersistentSession s WHERE s.id IN ?", [ids])
+			PersistentSession.executeUpdate("DELETE PersistentSession s WHERE s.id IN ?", ids)
 		}
 
 		deleteAttributesBySessionIds(ids)
