@@ -3,6 +3,7 @@
 /plugin.xml
 *.log
 target
+target-eclipse/*
 .settings
 web-app
 /docs

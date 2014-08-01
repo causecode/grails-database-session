@@ -3,6 +3,8 @@ package grails.plugin.databasesession
 import grails.util.GrailsUtil
 import grails.validation.ValidationException
 
+import javax.annotation.PostConstruct
+
 import org.codehaus.groovy.grails.web.servlet.GrailsApplicationAttributes
 import org.springframework.util.Assert
 
@@ -16,27 +18,38 @@ class GormPersisterService implements Persister {
 	def grailsApplication
 	def persistentSessionService
 
-	void create(String sessionId) {
-		def maxInactiveInterval = grailsApplication.config.webxml.sessionConfig.sessionTimeout
-		if (!(maxInactiveInterval instanceof Number)) {
+	def maxInactiveInterval
+	boolean useMongo = false
+
+	@PostConstruct
+	void postConstruct() {
+		useMongo = grailsApplication.config.grails.plugin.databasesession.persistence.provider == "mongodb"
+
+		maxInactiveInterval = grailsApplication.config.webxml.sessionConfig.sessionTimeout
+		if (!(maxInactiveInterval instanceof Integer)) {
 			maxInactiveInterval = 30
 		}
+	}
 
+	void create(String sessionId) {
 		try {
 			if (PersistentSession.exists(sessionId)) {
 				return
 			}
+
 			Long creationTime = System.currentTimeMillis()
 
-			Map data = [creationTime: creationTime, _id: sessionId, lastAccessedTime: creationTime,
-				maxInactiveInterval: maxInactiveInterval, invalidated: false]
+			if (useMongo) {
+				Map data = [creationTime: creationTime, _id: sessionId, lastAccessedTime: creationTime,
+					maxInactiveInterval: maxInactiveInterval, invalidated: false]
 
-			// Using mongo property to dynamic insert. Will fail if mongo not installed & will be handled by next catch block
-			PersistentSession.collection.insert(data)
-		} catch (MissingMethodException e) {
-			// collection property in only available in mongodb but not in case of hibernate
-			PersistentSession sessionInstance = new PersistentSession([maxInactiveInterval: maxInactiveInterval])
-			sessionInstance.save(flush: true, failOnError: true)
+				PersistentSession.collection.insert(data)
+			} else {
+				PersistentSession sessionInstance = new PersistentSession()
+				sessionInstance.maxInactiveInterval = maxInactiveInterval
+				sessionInstance.id = sessionId
+				sessionInstance.save(flush: true, failOnError: true)
+			}
 		} catch (e) {
 			handleException e
 		}
@@ -108,18 +121,18 @@ class GormPersisterService implements Persister {
 	}
 
 	void removeAttribute(String sessionId, String name) throws InvalidatedSessionException {
-		if (name == null) return
+		if (!name) return;
 
-			try {
-				PersistentSession session = PersistentSession.get(sessionId)
-				checkInvalidated session
-				session.lastAccessedTime = System.currentTimeMillis()
+		try {
+			PersistentSession session = PersistentSession.get(sessionId)
+			checkInvalidated session
+			session.lastAccessedTime = System.currentTimeMillis()
 
-				persistentSessionService.removeAttribute sessionId, name
-			}
-			catch (e) {
-				handleException e
-			}
+			persistentSessionService.removeAttribute sessionId, name
+		}
+		catch (e) {
+			handleException e
+		}
 	}
 
 	List<String> getAttributeNames(String sessionId) throws InvalidatedSessionException {
@@ -133,11 +146,8 @@ class GormPersisterService implements Persister {
 
 	void invalidate(String sessionId) {
 		try {
-			persistentSessionService.deleteValuesBySessionId sessionId
 			persistentSessionService.deleteAttributesBySessionId sessionId
 
-			// TODO Find alternative to lock
-			//PersistentSession session = PersistentSession.lock(sessionId)
 			PersistentSession session = PersistentSession.get(sessionId)
 
 			def conf = grailsApplication.config.grails.plugin.databasesession
