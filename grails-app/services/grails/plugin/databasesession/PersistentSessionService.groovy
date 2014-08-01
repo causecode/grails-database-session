@@ -1,5 +1,7 @@
 package grails.plugin.databasesession
 
+import javax.annotation.PostConstruct;
+
 import org.springframework.transaction.annotation.Transactional
 import org.springframework.util.Assert
 
@@ -7,6 +9,17 @@ import org.springframework.util.Assert
  * @author Burt Beckwith
  */
 class PersistentSessionService {
+
+	static transactional = false
+
+	def grailsApplication
+
+	boolean useMongo
+
+	@PostConstruct
+	void postConstruct() {
+		useMongo = grailsApplication.config.grails.plugin.databasesession.persistence.provider == "mongodb"
+	}
 
 	def deserializeAttributeValue(byte[] serialized) {
 		if (!serialized) {
@@ -33,107 +46,81 @@ class PersistentSessionService {
 		baos.toByteArray()
 	}
 
-	PersistentSessionAttributeValue findValueBySessionAndAttributeName(PersistentSession session, String name) {
-		PersistentSession.executeQuery(
-				'from PersistentSessionAttributeValue v ' +
-				'where v.attribute.session=:session and v.attribute.name=:name',
-				[session: session, name: name])[0]
+	PersistentSessionAttribute findValueBySessionAndAttributeName(PersistentSession session, String name) {
+		findValueBySessionIdAndAttributeName(session.id, name)
 	}
 
-	List<PersistentSessionAttributeValue> findValuesBySession(String sessionId) {
+	PersistentSessionAttribute findValueBySessionIdAndAttributeName(String sessionId, String name) {
+        return PersistentSessionAttribute.findBySessionIdAndName(sessionId, name)
+	}
+
+	List<PersistentSessionAttribute> findValuesBySession(String sessionId) {
 		Assert.hasLength sessionId
-
-		PersistentSession.executeQuery(
-			'from PersistentSessionAttributeValue v where v.attribute.session.id=:sessionId order by v.id',
-			[sessionId: sessionId])
+        PersistentSessionAttribute.findAllBySessionId(sessionId, [sort: "id"])
 	}
 
-	@Transactional
-	void deleteValuesBySessionId(String sessionId) {
-		Assert.hasLength sessionId
-
-		deleteValuesByIds(PersistentSession.executeQuery(
-			'select id from PersistentSessionAttributeValue v ' +
-			'where v.attribute.session.id=:sessionId',
-			[sessionId: sessionId]))
+	void deleteAttributesBySessionId(String sessionId) {
+		if (useMongo) {
+			PersistentSessionAttribute.collection.remove([sessionId: sessionId])
+		} else {
+			PersistentSessionAttribute.executeUpdate("DELETE PersistentSessionAttribute a WHERE a.sessionId = ?", [sessionId])
+		}
 	}
 
-	@Transactional
-	void deleteValuesBySessionIds(sessionIds) {
-		Assert.notEmpty sessionIds
+	void deleteAttributesBySessionIds(sessionIds) {
+		if (!sessionIds) {
+			return
+		}
 
-		deleteValuesByIds(PersistentSession.executeQuery(
-			'select id from PersistentSessionAttributeValue v ' +
-			'where v.attribute.session.id in (:sessionIds)',
-			[sessionIds: sessionIds]))
+		if (useMongo) {
+			PersistentSessionAttribute.collection.remove([sessionId: [$in: sessionIds]])
+		} else {
+			PersistentSessionAttribute.executeUpdate("DELETE PersistentSessionAttribute a WHERE a.sessionId IN :sessionIds",
+				[sessionIds: sessionIds])
+		}
 	}
 
-	@Transactional
-	void removeValue(String sessionId, String name) {
-		Assert.hasLength sessionId
-		Assert.hasLength name
-
-		deleteValuesByIds(PersistentSession.executeQuery(
-			'select id from PersistentSessionAttributeValue v ' +
-			'where v.attribute.session.id=:sessionId and v.attribute.name=:name',
-			[sessionId: sessionId, name: name]))
+	void removeAttribute(String sessionId, String name) {
+		PersistentSessionAttribute.findBySessionIdAndName(sessionId, name)?.delete(flush: true)
 	}
 
-	protected void deleteValuesByIds(ids) {
+	List<String> findAllAttributeNames(String sessionId) {
+		PersistentSessionAttribute.findAllBySessionId(sessionId)*.name
+	}
+
+	List<String> findAllSessionIdsByLastAccessedOlderThan(long age) {
+		PersistentSession.withCriteria {
+			projections {
+				if (useMongo) {
+					id()
+				} else {
+					property("id")
+				}
+			}
+			lt("lastAccessedTime", age)
+		}
+	}
+
+	void deleteSessionsByIds(ids) {
 		if (!ids) {
 			return
 		}
 
-		PersistentSession.executeUpdate(
-			'delete from PersistentSessionAttributeValue v where v.id in (:ids)',
-			[ids: ids])
-	}
+		if (useMongo) {
+			PersistentSession.collection.remove([_id: [$in: ids]])
+		} else {
+			PersistentSession.executeUpdate("DELETE PersistentSession s WHERE s.id IN ?", ids)
+		}
 
-	@Transactional
-	void deleteAttributesBySessionId(String sessionId) {
-		PersistentSession.executeUpdate(
-			'delete from PersistentSessionAttribute a where a.session.id=:sessionId',
-			[sessionId: sessionId])
-	}
-
-	@Transactional
-	void deleteAttributesBySessionIds(sessionIds) {
-		PersistentSession.executeUpdate(
-			'delete from PersistentSessionAttribute a where a.session.id in (:sessionIds)',
-			[sessionIds: sessionIds])
-	}
-
-	@Transactional
-	void removeAttribute(String sessionId, String name) {
-		PersistentSession.executeUpdate(
-			'delete from PersistentSessionAttribute psa ' +
-			'where psa.session.id=:sessionId and psa.name=:name',
-			[sessionId: sessionId, name: name])
-	}
-
-	List<String> findAllAttributeNames(String sessionId) {
-		PersistentSession.executeQuery(
-			'select psa.name from PersistentSessionAttribute psa ' +
-			'where psa.session.id=:sessionId',
-			[sessionId: sessionId])
-	}
-
-	List<String> findAllSessionIdsByLastAccessedOlderThan(long age) {
-		PersistentSession.executeQuery(
-			'select s.id from PersistentSession s where s.lastAccessedTime < :age',
-			[age: age])
-	}
-
-	@Transactional
-	void deleteSessionsByIds(ids) {
-		PersistentSession.executeUpdate(
-			'delete from PersistentSession s where s.id in (:ids)',
-			[ids: ids])
+		deleteAttributesBySessionIds(ids)
 	}
 
 	Boolean isSessionInvalidated(String sessionId) {
-		PersistentSession.executeQuery(
-			'select s.invalidated from PersistentSession s where s.id=:id',
-			[id: sessionId])[0]
+		PersistentSession.withCriteria {
+			projections {
+				property("invalidated")
+			}
+			eq("id", sessionId)
+		}
 	}
 }

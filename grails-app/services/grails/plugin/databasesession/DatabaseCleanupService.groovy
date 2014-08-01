@@ -14,8 +14,12 @@ class DatabaseCleanupService {
 	 */
 	void cleanup() {
 
-		def conf = grailsApplication.config.grails.plugin.databasesession
-		float maxAge = (conf.cleanup.maxAge ?: 30) as Float
+		def maxAge = grailsApplication.config.webxml.sessionConfig.sessionTimeout
+		if (maxAge instanceof Number) {
+			maxAge = maxAge as Float
+		} else {
+			maxAge = 30f
+		}
 
 		long age = System.currentTimeMillis() - maxAge * 1000 * 60
 
@@ -27,10 +31,6 @@ class DatabaseCleanupService {
 		if (log.isDebugEnabled()) {
 			log.debug "using max age $maxAge minute(s), found old sessions to remove: $ids"
 		}
-
-		persistentSessionService.deleteValuesBySessionIds ids
-
-		persistentSessionService.deleteAttributesBySessionIds ids
 
 		persistentSessionService.deleteSessionsByIds ids
 	}
