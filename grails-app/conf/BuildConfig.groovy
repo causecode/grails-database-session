@@ -9,16 +9,17 @@ grails.project.dependency.resolution = {
 
 	repositories {
 		grailsPlugins()
-        grailsHome()
-        grailsCentral()
+		grailsHome()
+		grailsCentral()
 
-        mavenLocal()
-        mavenCentral()
+		mavenLocal()
+		mavenCentral()
 	}
 
 	plugins {
-        build(":tomcat:7.0.50", ":release:3.0.1", ":rest-client-builder:1.0.3") {
-            export = false
-        }
+		build(":tomcat:7.0.50", ":release:3.0.1", ":rest-client-builder:1.0.3", ":hibernate:3.6.10.7") {
+			export = false
+		}
+		compile ":webxml:1.4.1"
 	}
 }
